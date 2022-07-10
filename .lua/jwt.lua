@@ -21,8 +21,9 @@ local JWT = {
 
     -- [[ Errors ]]
     ["Success"]          = 0,
-    ["InvalidJWT"]       = 1,
-    ["InvalidParameter"] = 2,
+    ["NotVerified"]      = 1,
+    ["InvalidJWT"]       = 2,
+    ["InvalidParameter"] = 3,
 
     --[[ JWT algorithms ]]
     -- lookup table
@@ -72,6 +73,46 @@ function JWT.DecodeBase64URL(str)
         str = (str):gsub(key, val)
     end
     return DecodeBase64(str)  -- redbean function
+end
+
+
+-- regex to split the JWT segments into header payload and signature
+local splitRegex = re.compile([[^(.*?)\.(.*?)\.(.*?)$]])
+
+---Split the JWT and return the separate segments
+---@private
+---@param data string JWT string
+---@return number, string, string, string if given data is of valid structure
+---@return number, nil, nil, nil if invalid structure is given
+function JWT.Split(data)
+    local match, headerb64, payloadb64, signatureb64 = splitRegex:search(data)
+    if match then
+        return JWT.Success, headerb64, payloadb64, signatureb64
+    else
+        return JWT.InvalidJWT
+    end
+end
+
+
+---Decode the split up Base64URL strings
+---@private
+---@param headerBase64 string base64 string
+---@param payloadBase64 string base64 string
+---@param signatureBase64 string base64 string
+---@return table with header, payload tables and decoded signature
+function JWT.DecodeParts(headerBase64, payloadBase64, signatureBase64)
+    local hb64 = headerBase64 or ""
+    local pb64 = payloadBase64 or ""
+    local sb64 = signatureBase64 or ""
+    -- ternary: if string has length larger than 0 otherwise empty JSON string
+    hb64 = (#hb64 > 0) and JWT.DecodeBase64URL(hb64) or "[]"
+    pb64 = (#pb64 > 0) and JWT.DecodeBase64URL(pb64) or "[]"
+    local result = {
+        ["header"]    = DecodeJson(hb64),
+        ["payload"]   = DecodeJson(pb64),
+        ["signature"] = JWT.DecodeBase64URL(sb64)
+    }
+    return result
 end
 
 
@@ -143,6 +184,41 @@ function JWT.Encode(jwtTable, key, alg)
     -- create the JWT string
     local result = ("%s.%s"):format(combinedBody, hash64)
     return result, JWT.Success
+end
+
+
+---Decodes the given JWT string to a table
+---@public
+---@param data string JWT string
+---@return table, number JWT parts in table and NOT-Verified code
+---@return nil, number nil and error code
+function JWT.Decode(data)
+    -- check given parameters
+    if type(data) ~= "string" then
+        Log(kLogError, "data not of type string")
+        return nil, JWT.InvalidParameter
+    end
+
+    -- split and decode
+    local _, header64, payload64, signature64 = JWT.Split(data)
+    local callSuccess, body = pcall(
+            JWT.DecodeParts, header64, payload64, signature64
+    )
+
+    -- error if failed to split and/or decode
+    if not callSuccess then
+        Log(kLogError, "Invalid JWT segment")
+        return nil, JWT.InvalidJWT
+    end
+
+    -- reflect payload verification with the NotVerified code
+    local result = {
+        -- tables
+        ["header"]    = body.header,
+        ["payload"]   = body.payload,
+        ["signature"] = body.signature,
+    }
+    return result, JWT.NotVerified
 end
 
 
