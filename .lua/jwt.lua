@@ -200,9 +200,9 @@ function JWT.Decode(data)
     end
 
     -- split and decode
-    local _, header64, payload64, signature64 = JWT.Split(data)
+    local _, b64header, b64payload, b64signature = JWT.Split(data)
     local callSuccess, body = pcall(
-            JWT.DecodeParts, header64, payload64, signature64
+            JWT.DecodeParts, b64header, b64payload, b64signature
     )
 
     -- error if failed to split and/or decode
@@ -217,9 +217,49 @@ function JWT.Decode(data)
         ["header"]    = body.header,
         ["payload"]   = body.payload,
         ["signature"] = body.signature,
+
+        -- used in verify
+        ["b64header"]    = b64header,
+        ["b64payload"]   = b64payload,
+        ["b64signature"] = b64signature,
+
     }
     return result, JWT.NotVerified
 end
+
+
+---Verify signature of the table received from the `Decode` function
+---@public
+---@param decodedTable table table received from `Decode` function
+---@param key string secret of the server
+---@param alg string if given it overrides the alg-value given in the JWT-header
+---@return table, number JWT parts in table and success code
+---@return nil, number nil and error code
+function JWT.VerifyDecodedTable(decodedTable, key, alg)
+    -- check given parameters
+    if type(decodedTable) ~= "table" then
+        Log(kLogError, "decodedTable not of type table")
+        return nil, JWT.InvalidParameter
+    end
+    if type(key) ~= "string" then
+        Log(kLogError, "key not of type string")
+        return nil, JWT.InvalidParameter
+    end
+
+    -- verify the signature
+    alg = alg or decodedTable.header.alg or JWT.alg.DEFAULT  -- override alg value or fallback to default
+    local combinedBody = ("%s.%s"):format(decodedTable.b64header, decodedTable.b64payload)
+    local hash = GetCryptoHash(JWT.alg[string.upper(alg)], combinedBody, key)
+
+    if hash ~= decodedTable.signature then
+        Log(kLogError, "Invalid signature")
+        return nil, JWT.InvalidSignature
+    end
+    return decodedTable, JWT.Success
+end
+
+-- assume data contains no errors
+-- local table, errCode = JWT.VerifyDecodedTable(JWT.Decode(data), "key")
 
 
 return JWT
