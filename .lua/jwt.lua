@@ -1,5 +1,5 @@
 local JWT = {
-    _VERSION = "jwt.lua 0.0.0",
+    _VERSION = "jwt.lua 0.1.0",
     _URL = "https://github.com/w13b3",
     _DESCRIPTION = "JSON Web Token for redbean",
     _LICENSE = [[
@@ -33,8 +33,6 @@ local JWT = {
         ["HS384"]   = "SHA384",
         ["HS512"]   = "SHA512",
     }
-
-
 }
 JWT.__index = JWT
 
@@ -116,21 +114,10 @@ function JWT.DecodeParts(headerBase64, payloadBase64, signatureBase64)
 end
 
 
---[[
-expected jwtTable:
-    {
-        ["header"] = {
-            ["alg"] = "HS256"
-        },
-
-        ["payload"] = {}
-    }
-]]
-
 ---Encode JSON that has header and payload keys
 ---@public
 ---@param jwtTable table header and payload of the JWT in a table
----@param key string secret password
+---@param key string secret of the server
 ---@param alg string if given it overrides the alg-value given in the JWT-header
 ---@return string, number JWT string and success code
 ---@return nil, number nil and error code
@@ -258,8 +245,34 @@ function JWT.VerifyDecodedTable(decodedTable, key, alg)
     return decodedTable, JWT.Success
 end
 
--- assume data contains no errors
--- local table, errCode = JWT.VerifyDecodedTable(JWT.Decode(data), "key")
+
+---Decode the JWT and verify the signature
+---@public
+---@param data string JWT string
+---@param key string secret of the server
+---@return table, number JWT parts in table and success code
+---@return nil, number nil and error code
+function JWT.DecodeAndVerify(data, key)
+    -- check given parameters
+    if type(key) ~= "string" then
+        Log(kLogError, "key not of type string")
+        return nil, JWT.InvalidParameter
+    end
+    if type(data) ~= "string" then
+        Log(kLogError, "data not of type string")
+        return nil, JWT.InvalidParameter
+    end
+
+    -- decode the data
+    local decodedTable, errorCode = JWT.Decode(data)
+    if errorCode ~= JWT.NotVerified then
+        return nil, errorCode  -- jwt.InvalidJWT
+    end
+
+    -- verify the decoded table content
+    decodedTable, errorCode = JWT.VerifyDecodedTable(decodedTable, key)
+    return decodedTable, errorCode
+end
 
 
 return JWT
