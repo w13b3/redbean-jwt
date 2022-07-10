@@ -1,5 +1,5 @@
 local JWT = {
-    _VERSION = "jwt.lua 0.1.0",
+    _VERSION = "jwt.lua 0.2.0",
     _URL = "https://github.com/w13b3",
     _DESCRIPTION = "JSON Web Token for redbean",
     _LICENSE = [[
@@ -28,16 +28,25 @@ local JWT = {
     --[[ JWT algorithms ]]
     -- lookup table
     alg = {
-        ["DEFAULT"] = "HS256", -- default algorithm
-        ["HS256"]   = "SHA256",
-        ["HS384"]   = "SHA384",
-        ["HS512"]   = "SHA512",
+        ["DEFAULT"]    = "HS256", -- default algorithm
+        ["HS256"]      = "SHA256",
+        ["HS384"]      = "SHA384",
+        ["HS512"]      = "SHA512",
+        -- incompatible with JWT
+        ["BLAKE2B256"] = "BLAKE2B256",
+        ["MD5"]        = "MD5",
+        ["SHA1"]       = "SHA1",
+        ["SHA224"]     = "SHA224",
+        ["SHA256"]     = "SHA256",
+        ["SHA384"]     = "SHA384",
+        ["SHA512"]     = "SHA512",
     }
 }
 JWT.__index = JWT
 
 --[=[
 sources used:
+    jwt.io
     datatracker.ietf.org/doc/html/rfc7519  -  archive.ph/KDWdO
     base64.guru/standards/base64url  -  archive.ph/T1hIZ
 ]=]
