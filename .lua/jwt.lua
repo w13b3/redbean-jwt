@@ -19,12 +19,6 @@ local JWT = {
         PERFORMANCE OF THIS SOFTWARE.
     ]],
 
-    -- [[ Errors ]]
-    ["Success"]          = 0,
-    ["NotVerified"]      = 1,
-    ["InvalidJWT"]       = 2,
-    ["InvalidParameter"] = 3,
-
     --[[ JWT algorithms ]]
     -- lookup table
     alg = {
@@ -53,9 +47,32 @@ sources used:
 ]=]
 
 
+---Wrapper to catch errors
+---@private
+---@param func function Function to catch errors from
+---@param defaultReturn any Optional set what to return on failure
+---@return any On success
+---@return nil, string When error occurs
+local function CatchError(func, defaultReturn)
+    assert(type(func) == "function",
+            ("Bad argument #1 to 'CatchError' (function expected, got %s)"):format(type(func)))
+    -- wrapper function
+    return function(...)
+        -- pack result into a table, result[1] is the boolean from `pcall`
+        local result = { pcall(func, ...) }
+        if result[1] then
+            -- unpack and discard the `pcall` bool
+            return select(2, table.unpack(result))
+        else -- `pcall` received error
+            return defaultReturn, result[2]
+        end
+    end
+end
+
+
 ---Base64URL is a modification of the main Base64 standard
 ---@private
----@param str string string to encode in Base64URL
+---@param str string String to encode in Base64URL
 ---@return string
 function JWT.EncodeBase64URL(str)
     assert(type(str) == "string", ("EncodeBase64URL expects a string, received: %s"):format(type(str)))
@@ -90,24 +107,24 @@ local splitTokenRegex = assert(re.compile([[(\w+)\.(\w+)\.(\w+)]]))
 ---Split the JWT and return the separate segments
 ---@private
 ---@param data string JWT string
----@return number, string, string, string if given data is of valid structure
----@return number, nil, nil, nil if invalid structure is given
+---@return boolean, string, string, string If given data is of valid structure
+---@return boolean False is returned if invalid data has an invalid structure
 function JWT.Split(data)
-    local match, headerb64, payloadb64, signatureb64 = splitTokenRegex:search(data)
-    if match then
-        return JWT.Success, headerb64, payloadb64, signatureb64
+    local match, headerb64, payloadb64, signatureb64 = assert(splitTokenRegex:search(data))
+    if match then  -- match is the token
+        return true, headerb64, payloadb64, signatureb64
     else
-        return JWT.InvalidJWT
+        return false
     end
 end
 
 
 ---Decode the split up Base64URL strings
 ---@private
----@param headerBase64 string base64 string
----@param payloadBase64 string base64 string
----@param signatureBase64 string base64 string
----@return table with header, payload tables and decoded signature
+---@param headerBase64 string Base64 string
+---@param payloadBase64 string Base64 string
+---@param signatureBase64 string Base64 string
+---@return table Table with header, payload tables and decoded signature
 function JWT.DecodeParts(headerBase64, payloadBase64, signatureBase64)
     local hb64 = headerBase64 or ""
     local pb64 = payloadBase64 or ""
@@ -126,162 +143,149 @@ end
 
 ---Encode JSON that has header and payload keys
 ---@public
----@param jwtTable table header and payload of the JWT in a table
----@param key string secret of the server
----@param alg string if given it overrides the alg-value given in the JWT-header
----@return string, number JWT string and success code
----@return nil, number nil and error code
+---@param jwtTable table Header and payload of the JWT in a table
+---@param key string Secret of the server
+---@param alg string If given it overrides the alg-value given in the JWT-header
+---@return string JWT string
+---@return nil, string When error occurs
 function JWT.Encode(jwtTable, key, alg)
-    -- check given parameters
-    if type(jwtTable) ~= "table" then
-        Log(kLogError, "Given header not of type table")
-        return nil, JWT.InvalidParameter
-    end
-    if jwtTable.header == nil or type(jwtTable.header) ~= "table" then
-        Log(kLogError, "Given body header not of type table")
-        return nil, JWT.InvalidParameter
-    end
-    if jwtTable.payload == nil or type(jwtTable.payload) ~= "table" then
-        Log(kLogError, "Given body payload not of type table")
-        return nil, JWT.InvalidParameter
-    end
+    return CatchError(function(jwtTable, key, alg)
+        -- check given parameters
+        assert(type(jwtTable) == "table", "Parameter: 'jwtTable' not of type table")
+        assert(type(jwtTable.header) == "table", "Header in the parameter: 'jwtTable' not of type table")
+        assert(type(jwtTable.payload) == "table", "Payload in the parameter: 'jwtTable' not of type table")
 
-    if key ~= nil then
-        if type(key) ~= "string" then
-            Log(kLogError, "Given key not of type string")
-            return nil, JWT.InvalidParameter
+        if key ~= nil then
+            assert(type(key) == "string", "Parameter: 'key' is not of type string")
+        else
+            -- key can be nil, but it defeats the purpose of JWT
+            Log(kLogWarn, "Given key is of value: nil")
         end
-    else
-        -- key can be nil, but it defeats the purpose of JWT
-        Log(kLogWarn, "given key is of value: nil")
-    end
 
-    -- override alg-value or fallback to default
-    alg = alg or jwtTable.header.alg or JWT.alg.DEFAULT
-    if JWT.alg[string.upper(alg)] == nil then
-        Log(kLogError, "Given alg is not supported")
-        return nil, JWT.InvalidParameter
-    end
+        -- override alg-value or fallback to default
+        alg = alg or jwtTable.header.alg or JWT.alg.DEFAULT
+        assert(JWT.alg[string.upper(alg)] ~= nil, "Given or received algorithm is not supported")
 
-    -- create header
-    local headerJSON = EncodeJson(jwtTable.header)
-    local headerb64 = JWT.EncodeBase64URL(headerJSON)
+        -- override the algorithm in the header
+        -- parameter: alg > header.alg > JWT.alg.DEFALT
+        jwtTable.header.alg = alg
 
-    -- create payload
-    local payloadJSON = EncodeJson(jwtTable.payload)
-    local payloadb64 = JWT.EncodeBase64URL(payloadJSON)
+        -- create header
+        local headerJSON = EncodeJson(jwtTable.header)
+        local headerb64 = JWT.EncodeBase64URL(headerJSON)
 
-    -- combine header and payload into body
-    local combinedBody = ("%s.%s"):format(headerb64, payloadb64)
+        -- create payload
+        local payloadJSON = EncodeJson(jwtTable.payload)
+        local payloadb64 = JWT.EncodeBase64URL(payloadJSON)
 
-    -- sign body with secret and add this signature to the body
-    local hash = GetCryptoHash(JWT.alg[string.upper(alg)], combinedBody, key)
-    local hash64 = JWT.EncodeBase64URL(hash)
+        -- combine header and payload into body
+        local combinedBody = ("%s.%s"):format(headerb64, payloadb64)
 
-    -- create the JWT string
-    local result = ("%s.%s"):format(combinedBody, hash64)
-    return result, JWT.Success
+        -- sign body with secret and add this signature to the body
+        local hash = GetCryptoHash(JWT.alg[string.upper(alg)], combinedBody, key)
+        local hash64 = JWT.EncodeBase64URL(hash)
+
+        -- create the JWT string
+        local result = ("%s.%s"):format(combinedBody, hash64)
+        return result
+    end)(jwtTable, key, alg)  -- call and pass arguments to CatchError
 end
 
 
 ---Decodes the given JWT string to a table
 ---@public
 ---@param data string JWT string
----@return table, number JWT parts in table and NOT-Verified code
----@return nil, number nil and error code
+---@return table Table with data from the decoded JWT
+---@return nil, string When error occurs
 function JWT.Decode(data)
-    -- check given parameters
-    if type(data) ~= "string" then
-        Log(kLogError, "data not of type string")
-        return nil, JWT.InvalidParameter
-    end
+    return CatchError(function(data)
+        -- check given parameters
+        assert(type(data) == "string", "Parameter: 'data' not of type string")
 
-    -- split and decode
-    local _, b64header, b64payload, b64signature = JWT.Split(data)
-    local callSuccess, body = pcall(
-            JWT.DecodeParts, b64header, b64payload, b64signature
-    )
+        -- split the JWT on its dot's
+        local success, b64header, b64payload, b64signature = JWT.Split(data)
+        assert(success, "Parameter: 'data' has an unexpected format")
 
-    -- error if failed to split and/or decode
-    if not callSuccess then
-        Log(kLogError, "Invalid JWT segment")
-        return nil, JWT.InvalidJWT
-    end
+        -- decode the splitted parts
+        local callSuccess, body = pcall(JWT.DecodeParts, b64header, b64payload, b64signature)
+        assert(callSuccess, "Invalid segment in the parameter: 'data'")
 
-    -- reflect payload verification with the NotVerified code
-    local result = {
-        -- tables
-        ["header"]    = body.header,
-        ["payload"]   = body.payload,
-        ["signature"] = body.signature,
+        -- reflect payload verification with the NotVerified code
+        local result = {
+            ["jwtVerified"] = false,  -- this decoded JWT is not verified
 
-        -- used in verify
-        ["b64header"]    = b64header,
-        ["b64payload"]   = b64payload,
-        ["b64signature"] = b64signature,
+            -- tables
+            ["header"]    = body.header,
+            ["payload"]   = body.payload,
+            ["signature"] = body.signature,
 
-    }
-    return result, JWT.NotVerified
+            -- used in verify
+            ["b64header"]    = b64header,
+            ["b64payload"]   = b64payload,
+            ["b64signature"] = b64signature
+        }
+        return result
+    end)(data)  -- call and pass arguments to CatchError
 end
 
-
----Verify signature of the table received from the `Decode` function
+---Verify signature of a decoded JWT table
 ---@public
----@param decodedTable table table received from `Decode` function
----@param key string secret of the server
----@param alg string if given it overrides the alg-value given in the JWT-header
----@return table, number JWT parts in table and success code
----@return nil, number nil and error code
-function JWT.VerifyDecodedTable(decodedTable, key, alg)
-    -- check given parameters
-    if type(decodedTable) ~= "table" then
-        Log(kLogError, "decodedTable not of type table")
-        return nil, JWT.InvalidParameter
-    end
-    if type(key) ~= "string" then
-        Log(kLogError, "key not of type string")
-        return nil, JWT.InvalidParameter
-    end
+---@param jwtTable table Preferably received from `Decode` function
+---@param key string Secret of the server
+---@param alg string If given it overrides the alg-value given in the JWT-header
+---@return table Table with JWT parts
+---@return nil, string When error occurs
+function JWT.VerifyTable(jwtTable, key, alg)
+    return CatchError(function(jwtTable, key, alg)
+        -- check given parameters
+        assert(type(jwtTable) == "table", "Parameter 'jwtTable' not of type table")
+        assert(type(key) == "string", "Parameter: 'key' not of type string")
+        -- check jwtTable content
+        assert(type(jwtTable.signature) == "string", "Parameter: 'jwtTable' does not contain a signature string")
+        assert(type(jwtTable.header) == "table", "Parameter: 'jwtTable' does not contain a header table")
+        assert(type(jwtTable.payload) == "table", "Parameter: 'jwtTable' does not contain a payload table")
 
-    -- verify the signature
-    alg = alg or decodedTable.header.alg or JWT.alg.DEFAULT  -- override alg value or fallback to default
-    local combinedBody = ("%s.%s"):format(decodedTable.b64header, decodedTable.b64payload)
-    local hash = GetCryptoHash(JWT.alg[string.upper(alg)], combinedBody, key)
+        -- define the algorithm
+        alg = alg or jwtTable.header.alg or JWT.alg.DEFAULT  -- override alg value or fallback to default
+        alg = JWT.alg[string.upper(alg)]
+        assert(alg ~= nil, "Given or received algorithm is not supported")
 
-    if hash ~= decodedTable.signature then
-        Log(kLogError, "Invalid signature")
-        return nil, JWT.InvalidSignature
-    end
-    return decodedTable, JWT.Success
+        -- define the base64 header and payload
+        local b64header = jwtTable.b64header or JWT.EncodeBase64URL(EncodeJson(jwtTable.header))
+        local b64payload = jwtTable.b64payload or JWT.EncodeBase64URL(EncodeJson(jwtTable.payload))
+
+        -- verify the signature
+        local combinedBody = ("%s.%s"):format(b64header, b64payload)
+        local hash = GetCryptoHash(alg, combinedBody, key)
+        assert(hash == jwtTable.signature, "The 'key' and signature do not match")
+
+        -- set verified to true, because the JWT is now verified
+        jwtTable.jwtVerified = true
+        return jwtTable
+    end)(jwtTable, key, alg)  -- call and pass arguments to CatchError
 end
 
 
 ---Decode the JWT and verify the signature
 ---@public
 ---@param data string JWT string
----@param key string secret of the server
----@return table, number JWT parts in table and success code
----@return nil, number nil and error code
+---@param key string Secret of the server
+---@return table Table with data from the decoded JWT
+---@return nil, string When error occurs
 function JWT.DecodeAndVerify(data, key)
-    -- check given parameters
-    if type(key) ~= "string" then
-        Log(kLogError, "key not of type string")
-        return nil, JWT.InvalidParameter
-    end
-    if type(data) ~= "string" then
-        Log(kLogError, "data not of type string")
-        return nil, JWT.InvalidParameter
-    end
+     return CatchError(function(data, key)
+        -- check given parameters
+        assert(type(key) == "string", "Parameter: 'key' not of type string")
+        assert(type(data) == "string", "Parameter: 'data' not of type string")
 
-    -- decode the data
-    local decodedTable, errorCode = JWT.Decode(data)
-    if errorCode ~= JWT.NotVerified then
-        return nil, errorCode  -- jwt.InvalidJWT
-    end
+        -- decode the data
+        local jwtTable = assert(JWT.Decode(data))
 
-    -- verify the decoded table content
-    decodedTable, errorCode = JWT.VerifyDecodedTable(decodedTable, key)
-    return decodedTable, errorCode
+        -- verify the decoded table content
+        jwtTable = assert(JWT.VerifyTable(jwtTable, key))
+        -- return verified table
+        return jwtTable
+    end)(data, key)  -- call and pass arguments to CatchError
 end
 
 
