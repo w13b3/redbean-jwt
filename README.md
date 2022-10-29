@@ -8,23 +8,40 @@
 > JSON Web Token (JWT) is an open standard (RFC 7519) that defines a compact and self-contained way for securely transmitting information between parties as a JSON object.  
 > This information can be verified and trusted because it is digitally signed.  
 > JWTs can be signed using a secret (with the HMAC algorithm) or a public/private key pair using RSA or ECDSA.  
-> _source: [jwt.io/introduction](https://jwt.io/introduction)_
+> _source: [jwt.io/introduction][1]_  
 
 ### How to use
-Read the [documentation](./doc/)
+Read the [documentation](./doc/)  
 
 ### Notes
-`jwt.lua` is possible because redbean 2.0.11 introduced `EncodeJson` and `DecodeJson`.  
+`jwt.lua` is possible because [redbean][2] 2.0.11 introduced `EncodeJson` and `DecodeJson`.  
 Previous versions did not have these functions.  
 If `jwt.lua` is needed for a previous version, a bit of work is required to make `jwt.lua` compatible.  
-`json.stringify` and `json.parse` in [this gist](https://gist.github.com/tylerneylon/59f4bcf316be525b30ab) can be used in place of `EncodeJson` and `DecodeJson`.
+`json.stringify` and `json.parse` in [this gist][3] can be used in place of `EncodeJson` and `DecodeJson`.  
 
 Consider the header & payload to be unencrypted and visible for the whole world.  
-So it is recommended not to use it for unencrypted credentials/personal data.
+So it is recommended not to use it for unencrypted credentials/personal data.  
 
-[`GetCryptoHash`](https://redbean.dev/#GetCryptoHash) is used to create the JWT signature segment.  
-As of writing this, the function expects one of the following strings:   
+[`GetCryptoHash`][4] is used to create the JWT signature segment.  
+As of writing this, the function expects one of the following strings:  
 `MD5`, `SHA1`, `SHA224`, `SHA256`, `SHA384`, `SHA512`, `BLAKE2B256`.  
-The `SHA256`, `SHA384`, `SHA512` are equal to `HS256`, `HS384`, `HS512`.    
+The `SHA256`, `SHA384`, `SHA512` are equal to `HS256`, `HS384`, `HS512`.  
 For compatibility’s sake the received HS algo's are renamed to SHA counterpart by a lookup table.  
-The strings expected by `GetCryptoHash` can also be used but this breaks compatibility.
+It is possible to use the other algorithms in a JWT, but this breaks compatibility.  
+
+### More awesone projects
+Check out this collection with [awesome-cosmopolitan][5] projects  
+
+
+[1]: https://jwt.io/introduction
+  <!-- archive.ph/djKJg -->
+
+[2]: https://redbean.dev 
+  <!-- archive.ph/xZPJX -->
+
+[3]: https://gist.github.com/tylerneylon/59f4bcf316be525b30ab "tylerneylon"
+  <!-- archive.ph/5leC3 -->
+
+[4]: https://redbean.dev/#GetCryptoHash "redbean.dev"
+[5]: https://github.com/shmup/awesome-cosmopolitan "shmup"
+  <!-- archive.ph/nC7QT -->
