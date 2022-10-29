@@ -1,5 +1,5 @@
 local JWT = {
-    _VERSION = "jwt.lua 0.2.1",
+    _VERSION = "jwt.lua 0.2.3",
     _URL = "https://github.com/w13b3",
     _DESCRIPTION = "JSON Web Token for redbean",
     _LICENSE = [[
@@ -138,6 +138,21 @@ function JWT.DecodeParts(headerBase64, payloadBase64, signatureBase64)
         ["signature"] = JWT.DecodeBase64URL(sb64)
     }
     return result
+end
+
+
+---Create a basic table
+---@public
+---@return table A default JWT table
+function JWT.BasicTable()
+    return {
+        ["header"] = {
+            ["alg"] = JWT.alg.DEFAULT
+        },
+        ["payload"] = {
+            ["iat"] = os.time()
+        }
+    }
 end
 
 
