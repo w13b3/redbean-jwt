@@ -304,4 +304,51 @@ function JWT.DecodeAndVerify(data, key)
 end
 
 
+---Set a cookie with a token
+---@public
+---@param jwtTable table Header and payload of the JWT in a table
+---@param key string Secret of the server
+---@param alg string If given it overrides the alg-value given in the JWT-header
+---@param cookieOptions table Optional cookie options
+---@return boolean True if no error has occurred
+---@return nil, string When error occurs
+function JWT.SetCookieToken(jwtTable, key, alg, cookieOptions)
+    return CatchError(function(jwtTable, key, alg, cookieOptions)
+        -- set default cookieOptions
+        cookieOptions = cookieOptions or {}
+
+        -- create and set the token in a Cookie
+        local token = assert(JWT.Encode(jwtTable, key, alg))
+        SetCookie(
+            cookieOptions.name or "access_token",    -- name
+            token,                                   -- token
+            cookieOptions                            -- options
+        )
+        return true
+    end)(jwtTable, key, alg, cookieOptions)
+end
+
+
+---Verify a cookie containing the token
+---@public
+---@param key string Secret of the server
+---@param data string Optional verifies given data instead of cookie
+---@param cookieName table Optional custom cookie name
+---@return table Table with data from the decoded JWT
+---@return nil, string When error occurs
+function JWT.VerifyCookieToken(key, data, cookieName)
+    return CatchError(function(key, data, cookieName)
+        -- check given parameters
+        assert(type(key) == "string", "Parameter: 'key' not of type string")
+        if type(data) ~= "string" then
+            data = GetCookie(cookieName or "access_token")
+        end
+        -- assure data is not nil
+        assert(data ~= nil, "Could not read the cookie data")
+        -- decode, verify and return data
+        return assert(JWT.DecodeAndVerify(data, key))
+    end)(key, data, cookieName)
+end
+
+
 return JWT
