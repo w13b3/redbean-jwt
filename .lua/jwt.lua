@@ -1,5 +1,5 @@
 local JWT = {
-    _VERSION = "jwt.lua 0.2.3",
+    _VERSION = "jwt.lua 0.2.4",
     _URL = "https://github.com/w13b3",
     _DESCRIPTION = "JSON Web Token for redbean",
     _LICENSE = [[
@@ -348,6 +348,45 @@ function JWT.VerifyCookieToken(key, data, cookieName)
         -- decode, verify and return data
         return assert(JWT.DecodeAndVerify(data, key))
     end)(key, data, cookieName)
+end
+
+
+---Set an Authorization header with a JWT Bearer token
+---@public
+---@param jwtTable table Header and payload of the JWT in a table
+---@param key string Secret of the server
+---@param alg string If given it overrides the alg-value given in the JWT-header
+---@return boolean True if no error has occurred
+---@return nil, string When error occurs
+function JWT.SetHeaderToken(jwtTable, key, alg)
+    return CatchError(function(jwtTable, key, alg)
+        local token = assert(JWT.Encode(jwtTable, key, alg))
+        SetHeader("Authorization", string.format("Bearer %s", token))
+        return true
+    end)(jwtTable, key, alg)
+end
+
+
+---Verify the Authorization header containing a JWT Bearer token
+---@public
+---@param key string Secret of the server
+---@param data string Optional verifies given data instead of header
+---@return table Table with data from the decoded JWT
+---@return nil, string When error occurs
+function JWT.VerifyHeaderToken(key, data)
+    return CatchError(function(key, data)
+        -- check given parameters
+        assert(type(key) == "string", "Parameter: 'key' not of type string")
+        if type(data) ~= "string" then
+            data = GetHeader("Authorization")
+        end
+        -- assure data is not nil
+        assert(data ~= nil, "Could not read the cookie data")
+        data = assert(splitTokenRegex:search(data))  -- returned match is the token
+
+        -- decode, verify and return data
+        return assert(JWT.DecodeAndVerify(data, key))
+    end)(key, data)
 end
 
 
