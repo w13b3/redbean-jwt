@@ -1,6 +1,6 @@
 local JWT = {
-    _VERSION = "jwt.lua 0.2.4",
-    _URL = "https://github.com/w13b3",
+    _VERSION = "jwt.lua 1.0.0",
+    _URL = "github.com/w13b3/redbean-jwt",
     _DESCRIPTION = "JSON Web Token for redbean",
     _LICENSE = [[
         Copyright 2022 w13b3
@@ -242,6 +242,7 @@ function JWT.Decode(data)
         return result
     end)(data)  -- call and pass arguments to CatchError
 end
+
 
 ---Verify signature of a decoded JWT table
 ---@public
