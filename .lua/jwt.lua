@@ -1,5 +1,5 @@
 local JWT = {
-    _VERSION = "jwt.lua 0.2.0",
+    _VERSION = "jwt.lua 0.2.1",
     _URL = "https://github.com/w13b3",
     _DESCRIPTION = "JSON Web Token for redbean",
     _LICENSE = [[
@@ -44,6 +44,7 @@ local JWT = {
 }
 JWT.__index = JWT
 
+
 --[=[
 sources used:
     jwt.io
@@ -84,7 +85,7 @@ end
 
 
 -- regex to split the JWT segments into header payload and signature
-local splitRegex = re.compile([[^(.*?)\.(.*?)\.(.*?)$]])
+local splitTokenRegex = assert(re.compile([[(\w+)\.(\w+)\.(\w+)]]))
 
 ---Split the JWT and return the separate segments
 ---@private
@@ -92,7 +93,7 @@ local splitRegex = re.compile([[^(.*?)\.(.*?)\.(.*?)$]])
 ---@return number, string, string, string if given data is of valid structure
 ---@return number, nil, nil, nil if invalid structure is given
 function JWT.Split(data)
-    local match, headerb64, payloadb64, signatureb64 = splitRegex:search(data)
+    local match, headerb64, payloadb64, signatureb64 = splitTokenRegex:search(data)
     if match then
         return JWT.Success, headerb64, payloadb64, signatureb64
     else
