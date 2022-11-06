@@ -6,6 +6,7 @@ local jwt = require("jwt")
 local EncodeBase64URL = jwt.EncodeBase64URL
 local DecodeBase64URL = jwt.DecodeBase64URL
 
+-- test with predefined values
 -- some test values are from datatracker.ietf.org/doc/html/rfc4648#section-10  -  archive.ph/htQta
 do
     local testValues = {
@@ -36,3 +37,28 @@ do
     end
 end
 -- redbean DecodeBase64 seems not to care about the base64 padding
+
+-- test with random text
+do
+    local charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+    function RandomText(length)
+        local c
+        local result = {}
+        for _ = 1, (tonumber(length) or 1) do
+            c = math.random(1, #charset)
+            table.insert(result, charset:sub(c, c))
+        end
+        return table.concat(result)
+    end
+
+    -- loop 100 times
+    for _ = 1, 100 do
+        local seed = Rdseed()
+        math.randomseed(seed)
+        local data = RandomText(seed % 100)
+        local encoded = EncodeBase64URL(data)
+        local decoded = DecodeBase64URL(encoded)
+        assert(data == decoded, ("Test random text failed with seed: %s"):format(seed))
+    end
+end

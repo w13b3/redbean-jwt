@@ -63,6 +63,17 @@ _Clean () {
     [ "$(ls -A definitions)" ] || rm -rf definitions
 }
 
+_Test () {
+  # $2 = test file path
+  TEST_FILE="./test/.init.lua"
+  if [ -n "${2}" ]; then
+    TEST_FILE="${2}"
+  fi
+
+  # -F 	eval Lua code in file
+  exec $OUT_CMD -F ${TEST_FILE}
+}
+
 case "$1" in
     init )
         _Init;
@@ -76,8 +87,7 @@ case "$1" in
         ;;
     test )
         _Pack;
-        # -F 	eval Lua code in file
-        exec $OUT_CMD -F ./test/.init.lua
+        _Test "${@}";
         ;;
     clean )
         _Clean;
