@@ -74,6 +74,11 @@ case "$1" in
         _Pack;
         exec $OUT_CMD;
         ;;
+    test )
+        _Pack;
+        # -F 	eval Lua code in file
+        exec $OUT_CMD -F ./test/.init.lua
+        ;;
     clean )
         _Clean;
         ;;
@@ -82,6 +87,7 @@ case "$1" in
         echo "- '$0 init': fetch redbean, zip and sqlite"
         echo "- '$0 pack': pack \"./srv/\" into a new redbean, overwriting the old"
         echo "- '$0 run': pack, then execute with a customizable command"
+        echo "- '$0 test': pack, execute the run.lua and quit redbean"
         echo "- '$0 clean': delete all downloaded and generated files"
         ;;
 esac
