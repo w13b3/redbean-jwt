@@ -390,37 +390,4 @@ function JWT.VerifyHeaderToken(key, data)
     end)(key, data)
 end
 
-
--- happy flow test
-do
-    local tbl
-    local secret = "SuperSecretKey"
-    local algorithm = "HS512"
-    local jwtTable = JWT.BasicTable()  -- default algorithm HS256
-    local data = "( ͡° ͜ʖ ͡°) Hello 🦞"
-    jwtTable.payload.data = data -- set data in the payload
-
-    -- encode to token with overridden algorithm
-    local token = assert(JWT.Encode(jwtTable, secret, algorithm))
-
-    -- decode without verification
-    tbl = assert(JWT.Decode(token))
-    assert(not tbl.jwtVerified, "Test failed: Token is verified")
-
-    -- check if verification returns error on wrong key
-    local result, error = JWT.VerifyTable(tbl, "wrongSecret")
-    assert(result == nil, "Test failed: Verification returned something")
-    assert(error ~= nil, "Test failed: Wrong verification did not return an error")
-
-    -- decode with verification
-    tbl = assert(JWT.DecodeAndVerify(token, secret))
-    assert(tbl.jwtVerified, "Test failed: Token is not verified")
-
-    -- check overridden algorithm in decoded table
-    assert(tbl.header.alg == algorithm, "Test failed: Algorithm not overridden")
-
-    -- check decoded data
-    assert(tbl.payload.data == data, "Test failed: Payload data failed to decode")
-end
-
 return JWT
