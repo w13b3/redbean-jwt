@@ -1,10 +1,7 @@
 --[=[
     test the base64url decode and encoding functions
 ]=]
-local jwt = require("jwt")
-
-local EncodeBase64URL = jwt.EncodeBase64URL
-local DecodeBase64URL = jwt.DecodeBase64URL
+local common = require("jwt")._Common
 
 -- test with predefined values
 -- some test values are from datatracker.ietf.org/doc/html/rfc4648#section-10  -  archive.ph/htQta
@@ -27,12 +24,13 @@ do
         { "\xfb",                       "-w",                               },
         { [[{"foo":"bar"}]],            "eyJmb28iOiJiYXIifQ",               },
         { [[5%2+3-1=3 "Yes/No" <a&b>]], "NSUyKzMtMT0zICJZZXMvTm8iIDxhJmI-", },
+        { "<<???>>",                    "PDw_Pz8-Pg",                       },
     }
     for _, pair in ipairs(testValues) do
         local plain, expected = table.unpack(pair)
-        local encoded = EncodeBase64URL(plain)
+        local encoded = common.EncodeBase64URL(plain)
         assert(encoded == expected, ("%s ~= %s"):format(encoded, expected))
-        local decoded = DecodeBase64URL(encoded)
+        local decoded = common.DecodeBase64URL(encoded)
         assert(plain == decoded, ("%s ~= %s"):format(plain, decoded))
     end
 end
@@ -49,7 +47,7 @@ do
             c = math.random(1, #charset)
             table.insert(result, charset:sub(c, c))
         end
-        return table.concat(result)
+        return table.concat(result)  -- type: string
     end
 
     -- loop 100 times
@@ -57,8 +55,8 @@ do
         local seed = Rdseed()
         math.randomseed(seed)
         local data = RandomText(seed % 100)
-        local encoded = EncodeBase64URL(data)
-        local decoded = DecodeBase64URL(encoded)
+        local encoded = common.EncodeBase64URL(data)
+        local decoded = common.DecodeBase64URL(encoded)
         assert(data == decoded, ("Test random text failed with seed: %s"):format(seed))
     end
 end
