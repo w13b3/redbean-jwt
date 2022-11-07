@@ -3,7 +3,7 @@
 ]=]
 local common = require("jwt")._Common
 
--- test with predefined values
+-- test EncodeBase64URL and DecodeBase64URL with predefined values
 -- some test values are from datatracker.ietf.org/doc/html/rfc4648#section-10  -  archive.ph/htQta
 do
     local testValues = {
@@ -76,5 +76,27 @@ do
         assert((not bool), ("EncodeBase64URL accepted type: %s"):format(type(obj)))
         bool = pcall(common.DecodeBase64URL, obj)
         assert((not bool), ("DecodeBase64URL accepted type: %s"):format(type(obj)))
+    end
+end
+
+-- test EncodeSegment and DecodeSegment with predefined values
+do
+    local testValues = {
+        -- object,                       expected after BASE64URL encode
+        { "<html>hello</html>",          "Ilx1MDAzY2h0bWxcdTAwM2VoZWxsb1x1MDAzY1wvaHRtbFx1MDAzZSI", },
+        { true,                          "dHJ1ZQ",                                                  },
+        { { header = { alg = "none" } }, "eyJoZWFkZXIiOnsiYWxnIjoibm9uZSJ9fQ",                      },
+        { 1234567890,                    "MTIzNDU2Nzg5MA",                                          },
+    }
+    for _, pair in ipairs(testValues) do
+        local object, expected = table.unpack(pair)
+        local encodedSegment = common.EncodeSegment(object)
+        assert(encodedSegment == expected, ("%s ~= %s"):format(encodedSegment, expected))
+        local decodedSegment = common.DecodeSegment(encodedSegment)
+        -- encode the lua object and the decoded segment to a string for ease of comparison
+        -- it's not the best way to test
+        object = assert(EncodeLua(object))
+        decodedSegment = assert(EncodeLua(decodedSegment))
+        assert(decodedSegment == object, ("%s ~= %s"):format(decodedSegment, object))
     end
 end

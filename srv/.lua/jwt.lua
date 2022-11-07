@@ -1,5 +1,5 @@
 local _INFO = {
-    _VERSION = "jwt.lua 1.0.1",
+    _VERSION = "jwt.lua 1.0.2",
     _URL = "github.com/w13b3/redbean-jwt",
     _DESCRIPTION = "JSON Web Token for redbean",
     _LICENSE = [[
@@ -85,6 +85,27 @@ function Common.DecodeBase64URL(str)
     return DecodeBase64(str)  -- redbean function
 end
 
+---Encode a segment to a base64URL encoded string
+---@private
+---@param segmentObject JsonValue Commonly a table or a string
+---@return string Base64URL encoded string
+function Common.EncodeSegment(segmentObject)
+    local encodedSegment = assert(EncodeJson(segmentObject, { pretty = false }))  -- encode to string
+    return Common.EncodeBase64URL(encodedSegment)
+end
+
+---Decode a base64URL encoded string to the original segment
+---@private
+---@param base64Segment string Base64URL encoded string
+---@return JsonValue
+function Common.DecodeSegment(base64Segment)
+    assert(type(base64Segment) == "string", ("DecodeSegment expects a string, received: %s"):format(type(base64Segment)))
+    local decodedSegment = Common.DecodeBase64URL(base64Segment)
+    -- ternary: if string has length larger than 0 otherwise empty JSON string
+    decodedSegment = (#decodedSegment > 0) and decodedSegment or "[]"
+    return assert(DecodeJson(decodedSegment))  -- decode the segment, not necessary a table
+end
+
 
 -- JWA  - datatracker.ietf.org/doc/html/rfc7518  - archive.ph/04oex
 local JWA = {}
@@ -134,44 +155,7 @@ JWT.__index = JWT
 
 -- JWS can have 2 or up to 3 segments
 -- unsecured signatures are missing the 3rd segment but have may have a trailing dot '.' according rfc7519#section-6.1
-local splitTokenRegex = assert(re.compile([[([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+)\.?([a-zA-Z0-9_-]+)?]]))
-
-
----Split the JWT and return the separate segments
----@private
----@param data string JWT string
----@return boolean, string, string, string If given data is of valid structure
----@return boolean False is returned if invalid data has an invalid structure
-function JWT.Split(data)
-    local match, headerb64, payloadb64, signatureb64 = assert(splitTokenRegex:search(data))
-    if match then  -- match is the token
-        return true, headerb64, payloadb64, signatureb64
-    else
-        return false
-    end
-end
-
-
----Decode the split up Base64URL strings
----@private
----@param headerBase64 string Base64 string
----@param payloadBase64 string Base64 string
----@param signatureBase64 string Base64 string
----@return table Table with header, payload tables and decoded signature
-function JWT.DecodeParts(headerBase64, payloadBase64, signatureBase64)
-    local hb64 = headerBase64 or ""
-    local pb64 = payloadBase64 or ""
-    local sb64 = signatureBase64 or ""
-    -- ternary: if string has length larger than 0 otherwise empty JSON string
-    hb64 = (#hb64 > 0) and Common.DecodeBase64URL(hb64) or "[]"
-    pb64 = (#pb64 > 0) and Common.DecodeBase64URL(pb64) or "[]"
-    local result = {
-        ["header"]    = DecodeJson(hb64),
-        ["payload"]   = DecodeJson(pb64),
-        ["signature"] = Common.DecodeBase64URL(sb64)
-    }
-    return result
-end
+JWT.splitTokenRegex = assert(re.compile([[([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+)\.?([a-zA-Z0-9_-]+)?]]))
 
 
 ---Create a basic table
@@ -219,12 +203,10 @@ function JWT.Encode(jwtTable, key, alg)
         jwtTable.header.alg = alg
 
         -- create header
-        local headerJSON = EncodeJson(jwtTable.header)
-        local headerb64 = Common.EncodeBase64URL(headerJSON)
+        local headerb64 = Common.EncodeSegment(jwtTable.header)
 
         -- create payload
-        local payloadJSON = EncodeJson(jwtTable.payload)
-        local payloadb64 = Common.EncodeBase64URL(payloadJSON)
+        local payloadb64 = Common.EncodeSegment(jwtTable.payload)
 
         -- combine header and payload into body
         local combinedBody = ("%s.%s"):format(headerb64, payloadb64)
@@ -254,21 +236,22 @@ function JWT.Decode(data)
         assert(type(data) == "string", "Parameter: 'data' not of type string")
 
         -- split the JWT on its dot's
-        local success, b64header, b64payload, b64signature = JWT.Split(data)
-        assert(success, "Parameter: 'data' has an unexpected format")
+        local match, b64header, b64payload, b64signature = assert(JWT.splitTokenRegex:search(data))
+        assert((match ~= nil), "Parameter: 'data' has an unexpected format")
 
         -- decode the splitted parts
-        local callSuccess, body = pcall(JWT.DecodeParts, b64header, b64payload, b64signature)
-        assert(callSuccess, "Invalid segment in the parameter: 'data'")
+        local header = Common.DecodeSegment(b64header)
+        local payload = Common.DecodeSegment(b64payload)
+        local signature = Common.DecodeBase64URL(b64signature)
 
         -- reflect payload verification with the NotVerified code
         local result = {
             ["jwtVerified"] = false,  -- this decoded JWT is not verified
 
             -- tables
-            ["header"]    = body.header,
-            ["payload"]   = body.payload,
-            ["signature"] = body.signature,
+            ["header"]    = header,
+            ["payload"]   = payload,
+            ["signature"] = signature,
 
             -- used in verify
             ["b64header"]    = b64header,
@@ -424,7 +407,7 @@ function JWT.VerifyHeaderToken(key, data)
         end
         -- assure data is not nil
         assert(data ~= nil, "Could not read the cookie data")
-        data = assert(splitTokenRegex:search(data))  -- returned match is the token
+        data = assert(JWT.splitTokenRegex:search(data))  -- returned match is the token
 
         -- decode, verify and return data
         return assert(JWT.DecodeAndVerify(data, key))
