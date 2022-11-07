@@ -1,5 +1,5 @@
-local JWT = {
-    _VERSION = "jwt.lua 1.0.0",
+local _INFO = {
+    _VERSION = "jwt.lua 1.0.1",
     _URL = "github.com/w13b3/redbean-jwt",
     _DESCRIPTION = "JSON Web Token for redbean",
     _LICENSE = [[
@@ -18,25 +18,7 @@ local JWT = {
         TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
         PERFORMANCE OF THIS SOFTWARE.
     ]],
-
-    --[[ JWT algorithms ]]
-    -- lookup table
-    alg = {
-        ["DEFAULT"]    = "HS256", -- default algorithm
-        ["HS256"]      = "SHA256",
-        ["HS384"]      = "SHA384",
-        ["HS512"]      = "SHA512",
-        -- incompatible with JWT
-        ["BLAKE2B256"] = "BLAKE2B256",
-        ["MD5"]        = "MD5",
-        ["SHA1"]       = "SHA1",
-        ["SHA224"]     = "SHA224",
-        ["SHA256"]     = "SHA256",
-        ["SHA384"]     = "SHA384",
-        ["SHA512"]     = "SHA512",
-    }
 }
-JWT.__index = JWT
 
 
 --[=[
@@ -70,15 +52,17 @@ local function CatchError(func, defaultReturn)
 end
 
 
+local Common = {}
+Common.__index = Common
+
 ---Base64URL is a modification of the main Base64 standard
 ---@private
 ---@param str string String to encode in Base64URL
 ---@return string
-function JWT.EncodeBase64URL(str)
+function Common.EncodeBase64URL(str)
+    -- rfc7515#appendix-C
     assert(type(str) == "string", ("EncodeBase64URL expects a string, received: %s"):format(type(str)))
-    -- remove the `=` padding
-    --> datatracker.ietf.org/doc/html/rfc7515#section-2
-    local subsitute = { ["/"] = "_", ["+"] = "-", ["="] = "" }
+    local subsitute = { ["/"] = "_", ["+"] = "-", ["="] = "" }  -- also remove the `=` padding
     local result = EncodeBase64(str)  -- redbean function
     for key, val in pairs(subsitute) do
         result = (result):gsub(key, val)
@@ -86,23 +70,72 @@ function JWT.EncodeBase64URL(str)
     return result
 end
 
-
 ---Base64URL is a modification of the main Base64 standard
 ---@private
 ---@param str string Base64URL encoded string
 ---@return string
-function JWT.DecodeBase64URL(str)
+function Common.DecodeBase64URL(str)
+    -- rfc7515#appendix-C
     assert(type(str) == "string", ("DecodeBase64URL expects a string, received: %s"):format(type(str)))
     local subsitute = { ["_"] = "/", ["-"] = "+" }
     for key, val in pairs(subsitute) do
         str = (str):gsub(key, val)
     end
+    -- has not seen any errors due to the lack of padding
     return DecodeBase64(str)  -- redbean function
 end
 
 
--- regex to split the JWT segments into header payload and signature
-local splitTokenRegex = assert(re.compile([[(\w+)\.(\w+)\.(\w+)]]))
+-- JWA  - datatracker.ietf.org/doc/html/rfc7518  - archive.ph/04oex
+local JWA = {}
+JWA.__index = JWA
+
+--[[ algorithms lookup table ]]
+JWA.alg = {
+    ["DEFAULT"]    = "HS256",
+    ["HS256"]      = "SHA256", -- required algorithm - rfc7518#section-3.1
+    ["HS384"]      = "SHA384",
+    ["HS512"]      = "SHA512",
+    -- incompatible with JWT
+    ["BLAKE2B256"] = "BLAKE2B256",
+    ["MD5"]        = "MD5",
+    ["SHA1"]       = "SHA1",
+    ["SHA224"]     = "SHA224",
+    ["SHA256"]     = "SHA256",
+    ["SHA384"]     = "SHA384",
+    ["SHA512"]     = "SHA512",
+}
+
+---Normalize given algorithm using the algorithm lookup table
+---@private
+---@param algorithm string text
+---@return string Normalized string that can be used in the header claim: 'alg'
+---@return nil when given algorithm is not known
+function JWA.NormalizeAlgorithm(algorithm)
+    if algorithm == nil then
+        algorithm = JWA.alg.DEFAULT
+    end
+    algorithm = tostring(algorithm):upper()
+    if algorithm == "NONE" then
+        return "none"  -- "alg" param value can be "none"
+    end
+    for alg, _ in pairs(JWA.alg) do
+        if alg == algorithm then
+            return algorithm  --  algorithm is supported -- rfc7518#section-3.6
+        end
+    end
+    return nil -- algorithm is not supported
+end
+
+
+local JWT = {}
+JWT.__index = JWT
+
+
+-- JWS can have 2 or up to 3 segments
+-- unsecured signatures are missing the 3rd segment but have may have a trailing dot '.' according rfc7519#section-6.1
+local splitTokenRegex = assert(re.compile([[([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+)\.?([a-zA-Z0-9_-]+)?]]))
+
 
 ---Split the JWT and return the separate segments
 ---@private
@@ -130,12 +163,12 @@ function JWT.DecodeParts(headerBase64, payloadBase64, signatureBase64)
     local pb64 = payloadBase64 or ""
     local sb64 = signatureBase64 or ""
     -- ternary: if string has length larger than 0 otherwise empty JSON string
-    hb64 = (#hb64 > 0) and JWT.DecodeBase64URL(hb64) or "[]"
-    pb64 = (#pb64 > 0) and JWT.DecodeBase64URL(pb64) or "[]"
+    hb64 = (#hb64 > 0) and Common.DecodeBase64URL(hb64) or "[]"
+    pb64 = (#pb64 > 0) and Common.DecodeBase64URL(pb64) or "[]"
     local result = {
         ["header"]    = DecodeJson(hb64),
         ["payload"]   = DecodeJson(pb64),
-        ["signature"] = JWT.DecodeBase64URL(sb64)
+        ["signature"] = Common.DecodeBase64URL(sb64)
     }
     return result
 end
@@ -147,7 +180,7 @@ end
 function JWT.BasicTable()
     return {
         ["header"] = {
-            ["alg"] = JWT.alg.DEFAULT
+            ["alg"] = JWA.alg.DEFAULT
         },
         ["payload"] = {
             ["iat"] = os.time()
@@ -178,27 +211,30 @@ function JWT.Encode(jwtTable, key, alg)
         end
 
         -- override alg-value or fallback to default
-        alg = alg or jwtTable.header.alg or JWT.alg.DEFAULT
-        assert(JWT.alg[string.upper(alg)] ~= nil, "Given or received algorithm is not supported")
+        alg = JWA.NormalizeAlgorithm(alg or jwtTable.header.alg)
+        assert((alg ~= nil), "Given or received algorithm is not supported")
 
         -- override the algorithm in the header
-        -- parameter: alg > header.alg > JWT.alg.DEFALT
+        -- parameter: alg > header.alg > JWT.alg.DEFAULT
         jwtTable.header.alg = alg
 
         -- create header
         local headerJSON = EncodeJson(jwtTable.header)
-        local headerb64 = JWT.EncodeBase64URL(headerJSON)
+        local headerb64 = Common.EncodeBase64URL(headerJSON)
 
         -- create payload
         local payloadJSON = EncodeJson(jwtTable.payload)
-        local payloadb64 = JWT.EncodeBase64URL(payloadJSON)
+        local payloadb64 = Common.EncodeBase64URL(payloadJSON)
 
         -- combine header and payload into body
         local combinedBody = ("%s.%s"):format(headerb64, payloadb64)
 
-        -- sign body with secret and add this signature to the body
-        local hash = GetCryptoHash(JWT.alg[string.upper(alg)], combinedBody, key)
-        local hash64 = JWT.EncodeBase64URL(hash)
+        local hash64 = ""
+        if alg ~= "none" then
+            -- sign body with secret and add this signature to the body
+            local hash = GetCryptoHash(JWA.alg[alg], combinedBody, key)
+            hash64 = Common.EncodeBase64URL(hash)
+        end
 
         -- create the JWT string
         local result = ("%s.%s"):format(combinedBody, hash64)
@@ -261,19 +297,24 @@ function JWT.VerifyTable(jwtTable, key, alg)
         assert(type(jwtTable.header) == "table", "Parameter: 'jwtTable' does not contain a header table")
         assert(type(jwtTable.payload) == "table", "Parameter: 'jwtTable' does not contain a payload table")
 
-        -- define the algorithm
-        alg = alg or jwtTable.header.alg or JWT.alg.DEFAULT  -- override alg value or fallback to default
-        alg = JWT.alg[string.upper(alg)]
-        assert(alg ~= nil, "Given or received algorithm is not supported")
+        -- override alg-value or fallback to default
+        alg = JWA.NormalizeAlgorithm(alg or jwtTable.header.alg)
+        assert((alg ~= nil), "Given or received algorithm is not supported")
 
         -- define the base64 header and payload
-        local b64header = jwtTable.b64header or JWT.EncodeBase64URL(EncodeJson(jwtTable.header))
-        local b64payload = jwtTable.b64payload or JWT.EncodeBase64URL(EncodeJson(jwtTable.payload))
+        local b64header = jwtTable.b64header or Common.EncodeBase64URL(EncodeJson(jwtTable.header))
+        local b64payload = jwtTable.b64payload or Common.EncodeBase64URL(EncodeJson(jwtTable.payload))
 
-        -- verify the signature
-        local combinedBody = ("%s.%s"):format(b64header, b64payload)
-        local hash = GetCryptoHash(alg, combinedBody, key)
-        assert(hash == jwtTable.signature, "The 'key' and signature do not match")
+        if alg == "none" then
+            -- Recipients MUST verify that the JWS Signature value is the empty octet sequence
+            -- rfc7518#section-3.6
+            assert(#tostring(jwtTable.signature) == 0, "'alg' claim is 'none' but the signature is given")
+        else
+            -- verify the signature
+            local combinedBody = ("%s.%s"):format(b64header, b64payload)
+            local hash = GetCryptoHash(JWA.alg[alg], combinedBody, key)
+            assert(hash == jwtTable.signature, "The 'key' and signature do not match")
+        end
 
         -- set verified to true, because the JWT is now verified
         jwtTable.jwtVerified = true
@@ -390,4 +431,9 @@ function JWT.VerifyHeaderToken(key, data)
     end)(key, data)
 end
 
+
+-- add Util to JWT
+JWT._INFO = _INFO
+JWT._Common = Common
+JWT._JWA = JWA
 return JWT
