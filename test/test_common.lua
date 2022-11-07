@@ -60,3 +60,21 @@ do
         assert(data == decoded, ("Test random text failed with seed: %s"):format(seed))
     end
 end
+
+-- test error if parameter is not of type string
+do
+    -- eight types in lua: nil, boolean, number, string, function, userdata, thread, and table.
+    -- userdata values cannot be created or modified in Lua, only through the C API.
+    -- lua manual 5.4 manual #2.1
+    local obj, bool
+    local func = function() end
+    -- nil, boolean, number, function, thread, and table
+    local types = { nil, true, 0, (func), (coroutine.create(func)), {"table"} }
+    for i = 1, #types do
+        obj, bool = types[i], nil
+        bool = pcall(common.EncodeBase64URL, obj)  -- pcall catches the error and returns false if error occurred
+        assert((not bool), ("EncodeBase64URL accepted type: %s"):format(type(obj)))
+        bool = pcall(common.DecodeBase64URL, obj)
+        assert((not bool), ("DecodeBase64URL accepted type: %s"):format(type(obj)))
+    end
+end
