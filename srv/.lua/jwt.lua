@@ -1,5 +1,5 @@
 local _INFO = {
-    _VERSION = "jwt.lua 1.0.2",
+    _VERSION = "jwt.lua 1.0.3",
     _URL = "github.com/w13b3/redbean-jwt",
     _DESCRIPTION = "JSON Web Token for redbean",
     _LICENSE = [[
@@ -20,6 +20,7 @@ local _INFO = {
     ]],
 }
 
+local re = require("re")  -- redbean built-in regex module
 
 --[=[
 sources used:
@@ -111,9 +112,18 @@ end
 local JWA = {}
 JWA.__index = JWA
 
---[[ algorithms lookup table ]]
-JWA.alg = {
-    ["DEFAULT"]    = "HS256",
+JWA.default = "HS256"
+
+JWA.supported = {
+    -- These algorithms are compatible with the standard
+    "none", "HS256", "HS384", "HS512",
+    -- These algorithms are incompatible with the standard, but GetCryptoHash can use these
+    "BLAKE2B256", "MD5",  "SHA1",  "SHA224",  "SHA256",  "SHA384", "SHA512"
+}
+
+-- algorithms lookup table
+JWA.lookup = {
+    ["NONE"]       = "none",   -- required
     ["HS256"]      = "SHA256", -- required algorithm - rfc7518#section-3.1
     ["HS384"]      = "SHA384",
     ["HS512"]      = "SHA512",
@@ -127,31 +137,30 @@ JWA.alg = {
     ["SHA512"]     = "SHA512",
 }
 
----Normalize given algorithm using the algorithm lookup table
+---Check the signature by hashing the message with multiple algorithms
 ---@private
----@param algorithm string text
----@return string Normalized string that can be used in the header claim: 'alg'
----@return nil when given algorithm is not known
-function JWA.NormalizeAlgorithm(algorithm)
-    if algorithm == nil then
-        algorithm = JWA.alg.DEFAULT
-    end
-    algorithm = tostring(algorithm):upper()
-    if algorithm == "NONE" then
-        return "none"  -- "alg" param value can be "none"
-    end
-    for alg, _ in pairs(JWA.alg) do
-        if alg == algorithm then
-            return algorithm  --  algorithm is supported -- rfc7518#section-3.6
+---@param message string The payload that was encrypted
+---@param signature string The received decoded signature
+---@param key string The secret which was used to hash the payload
+---@param algorithms table The allowed algorithms
+---@return boolean, string if the hashed message matches the signature, returned string is the algorithm used
+---@return nil, string when no match is found
+function JWA.CheckHash(message, signature, key, algorithms)
+    for _, alg in pairs(algorithms) do
+        -- pcall used so GetCryptoHash doesn't fail if it receive a hash-type it can't use
+        local bool, hash = pcall(GetCryptoHash, JWA.lookup[string.upper(alg)], message, key)
+        -- also check "none"  -  rfc7518#section-3.6
+        if (bool and hash == signature) or (alg == "none" and signature == "") then
+            return true, alg
         end
     end
-    return nil -- algorithm is not supported
+    return nil, string.format("The signature '%s' does not match the hashed message. Used algorithms: %s",
+                              EncodeLua(signature), EncodeLua(algorithms))
 end
 
 
 local JWT = {}
 JWT.__index = JWT
-
 
 -- JWS can have 2 or up to 3 segments
 -- unsecured signatures are missing the 3rd segment but have may have a trailing dot '.' according rfc7519#section-6.1
@@ -164,7 +173,7 @@ JWT.splitTokenRegex = assert(re.compile([[([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_-]+)\.?(
 function JWT.BasicTable()
     return {
         ["header"] = {
-            ["alg"] = JWA.alg.DEFAULT
+            ["alg"] = JWA.default
         },
         ["payload"] = {
             ["iat"] = os.time()
@@ -194,32 +203,25 @@ function JWT.Encode(jwtTable, key, alg)
             Log(kLogWarn, "Given key is of value: nil")
         end
 
-        -- override alg-value or fallback to default
-        alg = JWA.NormalizeAlgorithm(alg or jwtTable.header.alg)
+        -- override alg-value or fallback to default  (alg > header.alg > JWA.default)
+        alg = alg or jwtTable.header.alg or JWA.default
         assert((alg ~= nil), "Given or received algorithm is not supported")
 
         -- override the algorithm in the header
-        -- parameter: alg > header.alg > JWT.alg.DEFAULT
-        jwtTable.header.alg = alg
-
-        -- create header
-        local headerb64 = Common.EncodeSegment(jwtTable.header)
-
-        -- create payload
-        local payloadb64 = Common.EncodeSegment(jwtTable.payload)
+        jwtTable.header.alg = string.upper(alg)
 
         -- combine header and payload into body
-        local combinedBody = ("%s.%s"):format(headerb64, payloadb64)
+        local message = ("%s.%s"):format(Common.EncodeSegment(jwtTable.header), Common.EncodeSegment(jwtTable.payload))
 
         local hash64 = ""
         if alg ~= "none" then
             -- sign body with secret and add this signature to the body
-            local hash = GetCryptoHash(JWA.alg[alg], combinedBody, key)
+            local hash = GetCryptoHash(JWA.lookup[alg], message, key)
             hash64 = Common.EncodeBase64URL(hash)
         end
 
         -- create the JWT string
-        local result = ("%s.%s"):format(combinedBody, hash64)
+        local result = ("%s.%s"):format(message, hash64)
         return result
     end)(jwtTable, key, alg)  -- call and pass arguments to CatchError
 end
@@ -267,42 +269,35 @@ end
 ---@public
 ---@param jwtTable table Preferably received from `Decode` function
 ---@param key string Secret of the server
----@param alg string If given it overrides the alg-value given in the JWT-header
+---@param algorithms table A Table algorithm strings that are accepted to use
 ---@return table Table with JWT parts
 ---@return nil, string When error occurs
-function JWT.VerifyTable(jwtTable, key, alg)
-    return CatchError(function(jwtTable, key, alg)
+function JWT.VerifyTable(jwtTable, key, algorithms)
+    return CatchError(function(jwtTable, key, algorithms)
         -- check given parameters
         assert(type(jwtTable) == "table", "Parameter 'jwtTable' not of type table")
         assert(type(key) == "string", "Parameter: 'key' not of type string")
         -- check jwtTable content
         assert(type(jwtTable.signature) == "string", "Parameter: 'jwtTable' does not contain a signature string")
         assert(type(jwtTable.header) == "table", "Parameter: 'jwtTable' does not contain a header table")
-        assert(type(jwtTable.payload) == "table", "Parameter: 'jwtTable' does not contain a payload table")
+        assert(jwtTable.payload ~= nil, "Parameter: 'jwtTable' does not contain a payload")
 
-        -- override alg-value or fallback to default
-        alg = JWA.NormalizeAlgorithm(alg or jwtTable.header.alg)
-        assert((alg ~= nil), "Given or received algorithm is not supported")
+        -- if no algorithms are specified, fall back onto the supported algorithms
+        algorithms = algorithms or JWA.supported
+        assert(type(algorithms) == "table", "Given parameter: 'algorithms' not of type table")
 
         -- define the base64 header and payload
-        local b64header = jwtTable.b64header or Common.EncodeBase64URL(EncodeJson(jwtTable.header))
-        local b64payload = jwtTable.b64payload or Common.EncodeBase64URL(EncodeJson(jwtTable.payload))
+        local b64header = jwtTable.b64header or Common.EncodeSegment(jwtTable.header)
+        local b64payload = jwtTable.b64payload or Common.EncodeSegment(jwtTable.payload)
 
-        if alg == "none" then
-            -- Recipients MUST verify that the JWS Signature value is the empty octet sequence
-            -- rfc7518#section-3.6
-            assert(#tostring(jwtTable.signature) == 0, "'alg' claim is 'none' but the signature is given")
-        else
-            -- verify the signature
-            local combinedBody = ("%s.%s"):format(b64header, b64payload)
-            local hash = GetCryptoHash(JWA.alg[alg], combinedBody, key)
-            assert(hash == jwtTable.signature, "The 'key' and signature do not match")
-        end
+        -- verify the signature
+        local message = ("%s.%s"):format(b64header, b64payload)
+        assert(JWA.CheckHash(message, jwtTable.signature, key, algorithms))
 
         -- set verified to true, because the JWT is now verified
         jwtTable.jwtVerified = true
         return jwtTable
-    end)(jwtTable, key, alg)  -- call and pass arguments to CatchError
+    end)(jwtTable, key, algorithms)  -- call and pass arguments to CatchError
 end
 
 
@@ -310,10 +305,11 @@ end
 ---@public
 ---@param data string JWT string
 ---@param key string Secret of the server
+---@param algorithms table A Table algorithm strings that are accepted to use
 ---@return table Table with data from the decoded JWT
 ---@return nil, string When error occurs
-function JWT.DecodeAndVerify(data, key)
-     return CatchError(function(data, key)
+function JWT.DecodeAndVerify(data, key, algorithms)
+     return CatchError(function(data, key, algorithms)
         -- check given parameters
         assert(type(key) == "string", "Parameter: 'key' not of type string")
         assert(type(data) == "string", "Parameter: 'data' not of type string")
@@ -322,10 +318,10 @@ function JWT.DecodeAndVerify(data, key)
         local jwtTable = assert(JWT.Decode(data))
 
         -- verify the decoded table content
-        jwtTable = assert(JWT.VerifyTable(jwtTable, key))
+        jwtTable = assert(JWT.VerifyTable(jwtTable, key, algorithms))
         -- return verified table
         return jwtTable
-    end)(data, key)  -- call and pass arguments to CatchError
+    end)(data, key, algorithms)  -- call and pass arguments to CatchError
 end
 
 
@@ -419,4 +415,5 @@ end
 JWT._INFO = _INFO
 JWT._Common = Common
 JWT._JWA = JWA
+
 return JWT
