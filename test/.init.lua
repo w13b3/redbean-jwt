@@ -1,5 +1,5 @@
-local info = {
-    _VERSION = "./test/init.lua 0.1.0",
+local _INFO = {
+    _VERSION = "./test/init.lua 0.1.1",
     _URL = "github.com/w13b3/redbean-jwt",
     _SHORT_DESCRIPTION = "Test runner",
     _LONG_DESCRIPTION = [[
@@ -38,6 +38,25 @@ local re = require("re")
 local path = require("path")
 local unix = require("unix")
 
+-- global function to deep compare tables, to be used in tests
+function CompareTables(tableA, tableB)
+    local function err(objA, objB)  -- function to create error message
+        return string.format("Tables are not equal: %s ~= %s", EncodeLua(objA), EncodeLua(objB))
+    end
+    if tableA == tableB then return true end
+    if type(tableA) ~= "table" then return false, err(tableA, tableB) end
+    if type(tableB) ~= "table" then return false, err(tableA, tableB) end
+    local metaA, metaB = getmetatable(tableA), getmetatable(tableB)
+    if not CompareTables(metaA, metaB) then return false, err(tableA, tableB) end
+    for keyA, valA in pairs(tableA) do
+        if not CompareTables(valA, tableB[keyA]) then return false, err(tableA, tableB) end
+    end
+    for keyB, valB in pairs(tableB) do
+        if not CompareTables(tableA[keyB], valB) then return false, err(tableA, tableB) end
+    end
+    return true
+end
+
 -- matches filename of the files that start or end with 'test'
 local testFileRGX = re.compile([[(^test.+|.+test)\.]])
 
@@ -74,3 +93,5 @@ else
     local exitCode = (errorCount <= 0 and 0 or 1)
     os.exit(exitCode)  -- quit redbean after all the tests
 end
+
+return _INFO

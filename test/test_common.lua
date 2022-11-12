@@ -38,14 +38,20 @@ end
 
 -- test with random text
 do
-    local charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    local whitespace = ' \t\n\r\v\f'
+    local ascii_lowercase = 'abcdefghijklmnopqrstuvwxyz'
+    local ascii_uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    local ascii_letters = ascii_lowercase .. ascii_uppercase
+    local digits = '0123456789'
+    local punctuation = [[!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~]]
+    local printable =  digits .. ascii_letters .. punctuation .. whitespace
 
     function RandomText(length)
-        local c
+        local char
         local result = {}
         for _ = 1, (tonumber(length) or 1) do
-            c = math.random(1, #charset)
-            table.insert(result, charset:sub(c, c))
+            char = math.random(1, #printable)
+            table.insert(result, printable:sub(char, char))
         end
         return table.concat(result)  -- type: string
     end
@@ -93,10 +99,13 @@ do
         local encodedSegment = common.EncodeSegment(object)
         assert(encodedSegment == expected, ("%s ~= %s"):format(encodedSegment, expected))
         local decodedSegment = common.DecodeSegment(encodedSegment)
-        -- encode the lua object and the decoded segment to a string for ease of comparison
-        -- it's not the best way to test
-        object = assert(EncodeLua(object))
-        decodedSegment = assert(EncodeLua(decodedSegment))
-        assert(decodedSegment == object, ("%s ~= %s"):format(decodedSegment, object))
+
+        local err = ("%s ~= %s"):format(decodedSegment, object)
+        -- check if the given object is a table, if so compare with the CompareTables function
+        if type(object) == "table" then
+            assert(CompareTables(decodedSegment, object), err)
+        else
+            assert(decodedSegment == object, err)
+        end
     end
 end
