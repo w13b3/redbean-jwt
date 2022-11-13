@@ -1,119 +1,211 @@
 # Functions  <sub><sup>_A list of functions_<sup><sub>
 
-## Public functions
+---
 
-### `jwt.BasicTable()`
+## JWA
 
-Create a basic table  
-return type: `table`
+> ```lua
+> jwa = require("jwt")._JWA
+> ```  
 
+### JWA Public
 
-### `jwt.Encode(jwtTable, key, alg)`
+#### `jwa.default`  
 
-Encode JSON that has header and payload keys  
-param `jwtTable` type: `table`  
-param `key` type: `string`  
-optional param `alg` type: `string`  
-return type: `string` - JWT string  
-return type: `nil`, `string` - When error occurs
+_**The default algorithm is `HS256`**_  
 
+#### `jwa.supported`  
 
-### `jwt.Decode(data)`
+_**Table with supported algorithms**_  
 
-Decodes the given JWT string to a table, does not verify the JWT  
-param `data` type: `string`  
-return type: `table` - table with JWT parts  
-return type: `nil`, `string` - When error occurs
+#### `jwa.lookup`  
 
+_**Lookup table to convert algorithms to it's equivalent name to be used in `GetCryptoHash`**    
 
-### `jwt.VerifyTable(jwtTable, key, alg)`
+### JWA Private
 
-Verify signature of a decoded JWT table  
-param `jwtTable` type: `table`  
-param `key` type: `string`  
-optional param `alg` type: `string`  
-return type: `table` - Table with JWT parts  
-return type: `nil`, `string` - When error occurs
+#### `jwa.CheckHash(message, signature, key, algorithms)`
 
-
-### `jwt.DecodeAndVerify(data, key)`
-
-Decode the JWT and verify the signature  
-param `data` type: `string`  
-param `key` type: `string`  
-return type: `table` - Table with JWT parts  
-return type: `nil`, `string` - When error occurs
+_**Check the signature by hashing the message with multiple algorithms**_  
+param `message` type: `string` The payload that was encrypted  
+param `signature` type: `string` The received decoded signature  
+param `key` type: `string` The secret which was used to hash the payload  
+param `algorithms` type: `table` The allowed algorithms  
+return type: `boolean`, `string` If the hashed message matches the signature, returned string is the algorithm used  
+return type: `nil`, `string` When no match is found  
 
 
-### `jwt.SetCookieToken(jwtTable, key, alg, cookieOptions)`
-
-Set a cookie with a token  
-param `jwtTable` type: `table`  
-param `key` type: `string`  
-optional param `alg` type: `string`  
-optional param `cookieOptions` type: `table`  
-return type: `boolean` - if no error has occurred  
-return type: `nil`, `string` - When error occurs
+---
 
 
-### `jwt.VerifyCookieToken(key, data, cookieName)`
+## JWS  
 
-Verify a cookie containing the token  
-param `key` type: `string`  
-optional param `data` type: `string`  
-optional param `cookieName` type: `string`  
-return type: `table` - Table with JWT parts  
-return type: `nil`, `string` - When error occurs
+> ```lua
+> jws = require("jwt")._JWS
+> ```  
+
+### JWS Public  
+
+#### `jws.splitTokenRegex`  
+
+_**Compiled regex to split a JWS token**_  
+
+#### `jws.BasicTable()`  
+
+_**Create a basic table which can be used in `jwt.Encode`**_  
+return type: `table`  
+
+### JWS Private  
+
+#### `jws.Encode(jwtTable, key, alg)`  
+
+_**Encode JSON that has header and payload keys**_  
+param `jwtTable` type: `table` Header and payload of the JWS in a table  
+param `key` type: `string` Secret of the server  
+param `algorithm` type: `string` If given it overrides the alg-value given in the JWS-header  
+return type: `string` JWT string  
+
+#### `jws.Decode(data)`
+
+_**Decodes the given JWS string to a table**_  
+param `data` type: `string` JWS string  
+return `table` Table with data from the decoded JWS  
+
+#### `jws.VerifyTable(jwtTable, key, alg)`
+
+_**Verify signature of a decoded JWS table**_  
+param `jwtTable` type: `table` Preferably received from `jws.Decode` function  
+param `key` type: `string` Secret of the server  
+param `algorithms` type: `table` A Table algorithm strings that are accepted to use  
+return `table` Table with JWS parts  
+
+#### `jws.DecodeAndVerify(data, key)`
+
+_**Decode the JWS and verify the signature**_  
+param `data` type: `string` JWS string  
+param `key` type: `string` Secret of the server  
+param `algorithms` type: `table` A Table algorithm strings that are accepted to use  
+return `table` Table with data from the decoded JWS  
 
 
-### `jwt.SetHeaderToken(jwtTable, key, alg)`
-
-Set an Authorization header with a JWT Bearer token  
-param `jwtTable` type: `table`  
-param `key` type: `string`  
-optional param `alg` type: `string`  
-return type: `boolean` - if no error has occurred  
-return type: `nil`, `string` - When error occurs
+---
 
 
-### `jwt.VerifyHeaderToken(key, data)`
+## JWT  
 
-Verify the Authorization header containing a JWT Bearer token  
-param `key` type: `string`  
-optional param `data` type: `string`  
-return type: `table` - Table with JWT parts  
-return type: `nil`, `string` - When error occurs
+> ```lua
+> jwt = require("jwt")
+> ```  
 
+### JWT Public  
+
+#### `jwt.Encode(jwtTable, key, alg)`  
+
+_**Encode JSON that has header and payload keys**_  
+param `jwtTable` type: `table` Header and payload of the JWT in a table  
+param `key` type: `string` Secret of the server  
+param `algorithm` type: `string` If given it overrides the alg-value given in the JWT-header  
+return `string` JWT string  
+return `nil`, `string` When error occurs  
+
+#### `jwt.Decode(data)`  
+
+_**Decodes the given JWT string to a table**_  
+param `data` type: `string` JWT string  
+return `table` Table with data from the decoded JWT  
+return `nil`, `string` When error occurs  
+
+#### `jwt.VerifyTable(jwtTable, key, alg)`
+
+_**Verify signature of a decoded JWT table**_  
+param `jwtTable` type: `table` Preferably received from `jwt.Decode` function  
+param `key` type: `string` Secret of the server  
+param `algorithms` type: `table` A Table algorithm strings that are accepted to use  
+return `table` Table with JWT parts  
+return `nil`, `string` When error occurs  
+
+#### `jwt.DecodeAndVerify(data, key)`
+
+_**Decode the JWT and verify the signature**_  
+param `data` type: `string` JWT string  
+param `key` type: `string` Secret of the server  
+param `algorithms` type: `table` A Table algorithm strings that are accepted to use  
+return type: `table` Table with data from the decoded JWT  
+return type: `nil`, `string` When error occurs  
+
+#### `jwt.SetCookieToken(jwtTable, key, alg, cookieOptions)`
+
+_**Set a cookie with a token**_  
+param `jwtTable` type: `table` Header and payload of the JWT in a table  
+param `key` type: `string` Secret of the server  
+param `algorithm` type: `string` If given it overrides the alg-value given in the JWT-header  
+param `cookieOptions` type: `table` Optional cookie options  
+return type: `boolean` True if no error has occurred  
+return type: `nil`, `string` When error occurs  
+
+#### `jwt.VerifyCookieToken(key, data, cookieName)`
+
+_**Verify a cookie containing the token**_  
+param `key` type: `string` Secret of the server  
+param `data` type: `string` Optional verifies given data instead of cookie  
+param `algorithms` type: `table` A Table algorithm strings that are accepted to use  
+param `cookieName` type: `table` Optional custom cookie name  
+return type: `table` Table with data from the decoded JWT  
+return type: `nil`, `string` When error occurs  
+
+
+#### `jwt.SetHeaderToken(jwtTable, key, alg)`
+
+_**Set an Authorization header with a JWT Bearer token**_  
+param `jwtTable` type: `table` Header and payload of the JWT in a table  
+param `key` type: `string` Secret of the server  
+param `algorithm` type: `string` If given it overrides the alg-value given in the JWT-header  
+return type: `boolean` True if no error has occurred  
+return type: `nil`, `string` When error occurs  
+
+
+#### `jwt.VerifyHeaderToken(key, data)`
+
+_**Verify the Authorization header containing a JWT Bearer token**_  
+param `key` type: `string` Secret of the server  
+param `data` type: `string` Optional verifies given data instead of header  
+param `algorithms` type: `table` A Table algorithm strings that are accepted to use  
+return type: `table` Table with data from the decoded JWT  
+return type: `nil`, `string` When error occurs  
+
+
+---
+
+
+## Common
+
+> ```lua
+> common = require("jwt")._Common
+> ```  
 
 ## Private functions
 
+#### `common.EncodeBase64URL(str)`
 
-### `jwt.EncodeBase64URL(str)`
-
-Base64URL is a modification of the main Base64 standard  
+_**Base64URL is a modification of the main Base64 standard**_  
 param `str` type: `string`  
-return type: `string`
+return type: `string`  
 
 
-### `jwt.DecodeBase64URL(str)`
+#### `common.DecodeBase64URL(str)`
 
-Base64URL is a modification of the main Base64 standard  
+_**Base64URL is a modification of the main Base64 standard**_  
 param `str` type: `string`  
-return type: `string`
+return type: `string`  
 
+#### `common.EncodeSegment(segmentObject)`
 
-### `jwt.Split(data)`
+_**Encode a segment to a base64URL encoded string**_  
+param `segmentObject` type: `JsonValue` Commonly a table or a string  
+return type: `string` Base64URL encoded string  
 
-Split the JWT and return the separate segments  
-param `data` type: `string`   
-return type: `boolean`, `string`, `string`, `string` - If given data is of valid structure  
-return type: `boolean`, `string` - False is returned if invalid data has an invalid structure
+#### `common.DecodeSegment(base64Segment)`
 
-
-### `jwt.DecodeParts(headerBase64, payloadBase64, signatureBase64)`
-
-Decode the split up Base64URL strings  
-param `headerBase64` type: `string`  
-param `payloadBase64` type: `string`  
-param `signatureBase64` type: `string`  
-return type: `table` - Table with header, payload tables and decoded signature
+_**Decode a base64URL encoded string to the original segment**_  
+param `base64Segment` type: `string` Base64URL encoded string  
+return type: `JsonValue`  
