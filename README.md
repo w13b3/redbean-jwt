@@ -2,7 +2,7 @@
 
 [![jwt.io badge-compatible](https://jwt.io/img/badge-compatible.svg)](https://jwt.io/)
 ##### Compatible algorithms
-`HS256`, `HS384` and `HS512`
+`none`, `HS256`, `HS384` and `HS512`
 
 ### What is JSON Web Token?
 > JSON Web Token (JWT) is an open standard (RFC 7519) that defines a compact and self-contained way for securely transmitting information between parties as a JSON object.  
@@ -29,7 +29,7 @@ The `SHA256`, `SHA384`, `SHA512` are equal to `HS256`, `HS384`, `HS512`.
 For compatibility’s sake the received HS algo's are renamed to SHA counterpart by a lookup table.  
 It is possible to use the other algorithms in a JWT, but this breaks compatibility.  
 
-### More awesone projects
+### More awesome projects
 Check out this collection with [awesome-cosmopolitan][5] projects  
 
 
